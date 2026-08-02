@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Virtual environment (large; recreated by start.bat) ---
+.venv/
+venv/
+env/
+
+# --- Downloaded models & caches (fetched on first run; kept in-project) ---
+models/
+.uvr_models/
+*.pth
+*.onnx
+*.ckpt
+
+# --- Generated audio / outputs ---
+*.wav
+*.flac
+*.ogg
+*.mp3
+*.m4a
+*.aac
+diarization_output/
+*_speakers/
+out/
+out_*/
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

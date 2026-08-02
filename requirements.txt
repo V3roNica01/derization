@@ -1,0 +1,43 @@
+# ============================================================
+# Derization dependencies
+# ============================================================
+# Install the CORE set for a working tool (energy VAD + MFCC embeddings):
+#     pip install -r requirements.txt
+#
+# For BEST quality (neural VAD + ECAPA voiceprints) also install torch.
+#
+#   GPU (NVIDIA CUDA - much faster; recommended if you have an NVIDIA card):
+#     pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+#     pip install speechbrain silero-vad
+#
+#   CPU only (no GPU):
+#     pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+#     pip install speechbrain silero-vad
+#
+# The CUDA wheels bundle their own runtime; you only need a recent NVIDIA
+# driver. cu121 works on modern drivers; see pytorch.org for other CUDA
+# versions (cu124, etc.). The tool auto-uses the GPU when available.
+# ------------------------------------------------------------
+
+# --- Core (required) ---
+numpy>=1.23
+scipy>=1.9
+scikit-learn>=1.1
+soundfile>=0.12
+librosa>=0.10
+noisereduce>=3.0        # background-noise reduction (fallback denoiser)
+pyloudnorm>=0.1         # loudness normalization (studio enhancement)
+imageio-ffmpeg>=0.4     # bundled ffmpeg for MP3/AAC export
+
+# RVC/UVR HP5 vocal isolation (GPU denoiser). Install SEPARATELY, and reinstall
+# the CUDA torch build AFTER it (audio-separator pulls a CPU torch that would
+# otherwise clobber the GPU build). start.bat does this ordering automatically:
+#   pip install "audio-separator[gpu]"
+#   pip install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# --- Optional, high-quality backends (recommended) ---
+# Uncomment or install separately (see note above about the CPU wheel index).
+# torch>=2.0
+# torchaudio>=2.0
+# speechbrain>=1.0
+# silero-vad>=5.1
