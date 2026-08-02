@@ -1,5 +1,7 @@
 # Derization — Speaker Diarization & Voice Separation
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?logo=python&logoColor=white) ![PyTorch](https://img.shields.io/badge/PyTorch-2.5%20cu121-EE4C2C.svg?logo=pytorch&logoColor=white) ![CUDA](https://img.shields.io/badge/GPU-CUDA%2012.1-76B900.svg?logo=nvidia&logoColor=white) ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg?logo=windows&logoColor=white) ![Status](https://img.shields.io/badge/status-active-success.svg)
+
 Separate the voices of **2–3 speakers** in an audio recording. Derization runs a
 full pipeline — **noise reduction → speaker diarization → per-speaker studio
 enhancement → export** — figuring out **who spoke when** and writing a
@@ -7,9 +9,12 @@ enhancement → export** — figuring out **who spoke when** and writing a
 plus a timeline you can read or feed into other tools.
 
 It works best on conversational audio where people mostly take turns (interviews,
-meetings, podcasts, phone calls). It is *diarization-based* separation: each
-speaker's track contains their turns with silence elsewhere (it does not un-mix
-two people talking at the exact same instant).
+meetings, podcasts, phone calls). It is primarily *diarization-based* separation
+(each speaker's track holds their turns, silence elsewhere), with an optional
+**true overlap separation** stage (SepFormer) that un-mixes simultaneous speech
+into each speaker's track and deletes slices it can't confidently tell apart.
+Note: un-mixing real, noisy recordings is imperfect — where it isn't confident,
+those overlapping moments are removed rather than guessed.
 
 ---
 
