@@ -201,6 +201,16 @@ class DiarizationApp:
                         variable=self.verbose_var).grid(row=4, column=4, columnspan=3,
                                                         sticky="w", padx=6, pady=(2, 6))
 
+        self.transcribe_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Transcribe (speaker-labeled + subtitles)",
+                        variable=self.transcribe_var).grid(row=5, column=0, columnspan=4,
+                                                           sticky="w", padx=6, pady=(0, 6))
+        ttk.Label(opts, text="Whisper:").grid(row=5, column=4, sticky="e", padx=(6, 4))
+        self.whisper_var = tk.StringVar(value="small")
+        ttk.Combobox(opts, textvariable=self.whisper_var, width=9, state="readonly",
+                     values=["tiny", "base", "small", "medium", "large-v3"]).grid(
+                         row=5, column=5, columnspan=2, sticky="w", padx=(0, 6))
+
         # --- Action row ---
         actions = ttk.Frame(self.root)
         actions.pack(fill="x", **pad)
@@ -291,6 +301,8 @@ class DiarizationApp:
             remove_overlap=remove_overlap,
             overlap_margin=overlap_margin,
             overlap_mode=overlap_mode,
+            transcribe=self.transcribe_var.get(),
+            whisper_model=self.whisper_var.get(),
         )
 
     # ----------------------------------------------------------------- gpu

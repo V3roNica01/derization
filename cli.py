@@ -55,6 +55,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--overlap-mode", choices=["separate", "delete"], default="separate",
                    help="separate = un-mix simultaneous voices into each track; "
                         "delete = silence overlap in both")
+    p.add_argument("--transcribe", action="store_true",
+                   help="also transcribe: speaker-labeled transcript + SRT/VTT subtitles (Whisper)")
+    p.add_argument("--whisper-model", choices=["tiny", "base", "small", "medium", "large-v3"],
+                   default="small", help="Whisper model size for --transcribe")
     p.add_argument("--denoise-backend",
                    choices=["rvc_hp5", "auto", "noisereduce", "spectral", "none"],
                    default="rvc_hp5",
@@ -154,6 +158,8 @@ def main(argv=None) -> int:
         remove_overlap=_ov[0],
         overlap_margin=_ov[1],
         overlap_mode=args.overlap_mode,
+        transcribe=args.transcribe,
+        whisper_model=args.whisper_model,
         vad_backend=args.vad,
         embedding_backend=args.embeddings,
         device=args.device,

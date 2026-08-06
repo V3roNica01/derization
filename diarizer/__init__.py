@@ -16,7 +16,9 @@ from typing import List, Optional, Tuple
 from .config import DiarizationConfig, TARGET_SR
 from .pipeline import DiarizationResult, Segment, diarize
 from .audioio import LoadedAudio, load_audio
+from .logutil import get_logger
 
+log = get_logger()
 __version__ = "1.0.0"
 
 __all__ = [
@@ -101,6 +103,25 @@ def process_file(input_path: str | Path,
             report("SepFormer unavailable - overlaps will be deleted.", 0.9)
 
     files = export_all(audio, result, outdir, cfg)
+
+    # Optional: transcribe + attribute words to speakers (Whisper).
+    if getattr(cfg, "transcribe", False) and result.num_speakers > 0:
+        from .transcribe import (assign_speakers, available as tr_available,
+                                 transcribe_words, write_transcripts)
+        if tr_available():
+            def tr_prog(msg: str, frac: float) -> None:
+                report(msg, 0.85 + 0.15 * max(0.0, min(1.0, frac)))
+
+            try:
+                device = resolve_device(cfg.device, cfg.gpu_only)
+                words = transcribe_words(audio.mono16k, cfg, device, progress=tr_prog)
+                labeled = assign_speakers(words, result)
+                files += write_transcripts(labeled, result, outdir)
+            except Exception as exc:
+                log.warning("Transcription failed (%s); skipping", exc)
+        else:
+            log.warning("transcribe is on but faster-whisper is not installed; skipping")
+
     return result, files
 
 

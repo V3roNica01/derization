@@ -128,6 +128,16 @@ class DiarizationConfig:
     target_lufs: float = -16.0       # loudness-normalize target (speech standard)
     peak_ceiling_db: float = -1.0    # brickwall ceiling after normalization
 
+    # --- Transcription (optional; Whisper on GPU) -----------------------
+    # Transcribe the audio and attribute each word to a speaker, producing a
+    # speaker-labelled transcript + SRT/VTT subtitles + per-speaker text.
+    transcribe: bool = False
+    # Whisper model size: tiny, base, small, medium, large-v3 (bigger = better
+    # + slower + more VRAM). "small" is a good balance on a 6 GB card.
+    whisper_model: str = "small"
+    # Force a language code (e.g. "en") or None to auto-detect.
+    whisper_language: Optional[str] = None
+
     # --- Output ----------------------------------------------------------
     # Export format: wav, flac, ogg (via libsndfile) or mp3, aac (via ffmpeg).
     export_format: str = "wav"
