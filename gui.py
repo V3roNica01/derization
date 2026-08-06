@@ -192,7 +192,7 @@ class DiarizationApp:
                              "delete = silence them)", style="Sub.TLabel").grid(
             row=3, column=2, columnspan=6, sticky="w", padx=(8, 0))
 
-        self.compact_var = tk.BooleanVar(value=False)
+        self.compact_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(opts, text="Also export compact tracks",
                         variable=self.compact_var).grid(row=4, column=0, columnspan=4,
                                                          sticky="w", padx=6, pady=(2, 6))

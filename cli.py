@@ -72,8 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="allow CPU fallback (disables strict GPU-only mode)")
     p.add_argument("-y", "--yes", action="store_true",
                    help="don't prompt for format/destination; use flags/defaults")
-    p.add_argument("--compact", action="store_true",
-                   help="also export concatenated-only track per speaker")
+    p.add_argument("--compact", action="store_true", default=None,
+                   help="also export a silence-removed compact track per speaker (default on)")
+    p.add_argument("--no-compact", dest="compact", action="store_false",
+                   help="don't export the compact (silence-removed) tracks")
     p.add_argument("--no-tracks", action="store_true",
                    help="only write the timeline files, skip per-speaker audio")
     p.add_argument("-q", "--quiet", action="store_true", help="less console output")
@@ -185,7 +187,7 @@ def main(argv=None) -> int:
         export_format=fmt,
         mp3_bitrate=args.bitrate,
         export_per_speaker=not args.no_tracks,
-        export_compact=args.compact,
+        export_compact=(True if args.compact is None else args.compact),
     )
 
     # Import here so --help stays instant even before heavy deps are installed.

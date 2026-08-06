@@ -180,8 +180,9 @@ class DiarizationConfig:
     mp3_bitrate: str = "192k"        # bitrate for lossy formats (mp3/aac)
     # Export one full-length track per speaker (their voice, silence elsewhere).
     export_per_speaker: bool = True
-    # Also export a compact track per speaker with only their segments concatenated.
-    export_compact: bool = False
+    # Also export a compact track per speaker: the cleaned track with silent gaps
+    # removed (keeps the overlap deletion + cross-talk gate).
+    export_compact: bool = True
 
     def resolved_speaker_range(self) -> range:
         """The candidate speaker counts to try when auto-detecting."""

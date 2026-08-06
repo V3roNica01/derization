@@ -39,10 +39,8 @@ def export_all(audio: LoadedAudio, result: DiarizationResult, outdir: str | Path
         log.warning("No speakers found - only empty timeline files were written.")
         return written
 
-    if cfg.export_per_speaker:
+    if cfg.export_per_speaker or cfg.export_compact:
         written += _write_speaker_tracks(audio, result, outdir, cfg)
-    if cfg.export_compact:
-        written += _write_compact_tracks(audio, result, outdir, cfg)
 
     log.info("Wrote %d file(s) to %s", len(written), outdir)
     return written
@@ -75,9 +73,19 @@ def _write_speaker_tracks(audio: LoadedAudio, result: DiarizationResult,
             except Exception as exc:  # never let enhancement lose the track
                 log.warning("Enhancement failed for %s (%s); exporting raw audio",
                             result.label(spk), exc)
-        path = _save_track(outdir / result.label(spk), track, sr, cfg)
-        written.append(path)
-        log.info("  -> %s (%.1fs of audio)", Path(path).name, result.speaker_time()[spk])
+        if cfg.export_per_speaker:
+            path = _save_track(outdir / result.label(spk), track, sr, cfg)
+            written.append(path)
+            log.info("  -> %s (%.1fs of audio)", Path(path).name,
+                     result.speaker_time()[spk])
+        if cfg.export_compact:
+            # Compact = the cleaned track with silent gaps removed, so it keeps
+            # the overlap deletion + cross-talk gate (slicing raw segments would
+            # reintroduce the bleed those stages removed).
+            compact = _strip_silence(track, sr)
+            path = _save_track(outdir / f"{result.label(spk)}_compact", compact, sr, cfg)
+            written.append(path)
+            log.info("  -> %s (%.1fs audible)", Path(path).name, compact.shape[0] / sr)
     return written
 
 
@@ -97,36 +105,55 @@ def _save_track(base: Path, track: np.ndarray, sr: int, cfg) -> str:
         return str(out)
 
 
-def _write_compact_tracks(audio: LoadedAudio, result: DiarizationResult,
-                          outdir: Path, cfg) -> List[str]:
-    from .enhance import enhance_track
+def _strip_silence(track: np.ndarray, sr: int, thresh: float = 0.004,
+                   win: float = 0.040, pad: float = 0.060,
+                   merge_gap: float = 0.120, xfade: float = 0.005) -> np.ndarray:
+    """Return ``track`` with silent gaps removed - the audible regions
+    concatenated with short crossfades so there are no clicks. Detection is
+    energy-based on the (already cleaned) track, so it keeps exactly what is
+    audible after masking + overlap deletion + the cross-talk gate."""
+    n = track.shape[0]
+    mono = track if track.ndim == 1 else track.mean(axis=1)
+    w = max(1, int(win * sr))
+    nf = n // w
+    if nf == 0:
+        return track
+    rms = np.sqrt(np.mean(mono[:nf * w].reshape(nf, w).astype(np.float64) ** 2, axis=1))
+    hot = rms > thresh
+    # frames -> sample intervals, then pad + merge nearby ones
+    ivs = []
+    i = 0
+    while i < nf:
+        if hot[i]:
+            j = i
+            while j < nf and hot[j]:
+                j += 1
+            ivs.append([i * w, j * w])
+            i = j
+        else:
+            i += 1
+    if not ivs:
+        return track[:0]
+    p = int(pad * sr); gap = int(merge_gap * sr)
+    merged: List[List[int]] = []
+    for s, e in ([max(0, s - p), min(n, e + p)] for s, e in ivs):
+        if merged and s <= merged[-1][1] + gap:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
 
-    written = []
-    sr = audio.sr
-    by_spk: dict[int, List[Segment]] = {}
-    for s in result.segments:
-        by_spk.setdefault(s.speaker, []).append(s)
-
-    for spk, segs in sorted(by_spk.items()):
-        chunks = []
-        for s in segs:
-            i0 = max(0, int(round(s.start * sr)))
-            i1 = min(audio.samples.shape[0], int(round(s.end * sr)))
-            if i1 > i0:
-                chunks.append(audio.samples[i0:i1])
-        if not chunks:
-            continue
-        compact = np.concatenate(chunks, axis=0)
-        if cfg.enhance:
-            try:
-                compact = enhance_track(compact, sr, cfg)
-            except Exception as exc:
-                log.warning("Enhancement failed for %s (%s); exporting raw audio",
-                            result.label(spk), exc)
-        # Underscore (not ".compact") so the format extension isn't clobbered.
-        path = _save_track(outdir / f"{result.label(spk)}_compact", compact, sr, cfg)
-        written.append(path)
-    return written
+    xf = max(1, int(xfade * sr))
+    ramp = np.linspace(0.0, 1.0, xf).astype(track.dtype)
+    if track.ndim == 2:
+        ramp = ramp[:, None]
+    pieces: List[np.ndarray] = []
+    for s, e in merged:
+        seg = track[s:e].copy()
+        if pieces and seg.shape[0] > xf and pieces[-1].shape[0] > xf:
+            pieces[-1][-xf:] = pieces[-1][-xf:] * (1.0 - ramp)
+            seg[:xf] = seg[:xf] * ramp
+        pieces.append(seg)
+    return np.concatenate(pieces, axis=0)
 
 
 def _speaker_mask(segments: List[Segment], speaker: int, n: int, sr: int,
