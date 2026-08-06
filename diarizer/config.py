@@ -85,6 +85,22 @@ class DiarizationConfig:
     # un-mix more (keeps more overlap, but risks some bleed on fuzzy splits).
     overlap_assign_margin: float = 0.10
 
+    # --- Residual cross-talk gate ---------------------------------------
+    # Segment-boundary masking keeps a speaker's whole segment, but a brief
+    # foreign sound *inside* that segment - a laugh or a short interjection
+    # that isn't simultaneous speech - is never flagged as overlap and leaks
+    # into the track. This pass re-checks each speaker's own segments at fine
+    # resolution against the voiceprints and SILENCES windows that clearly
+    # belong to a different speaker ("delete if it's someone else").
+    crosstalk_gate: bool = True
+    crosstalk_win: float = 0.8       # fine analysis window (seconds)
+    crosstalk_hop: float = 0.4       # step between fine windows
+    # Silence a window only when another speaker's voiceprint beats this
+    # speaker's by at least this cosine margin. LOWER = more aggressive.
+    # ~0.10 light, 0.07 medium, 0.05 strong, 0.035 extreme.
+    crosstalk_margin: float = 0.07
+    crosstalk_min_rms: float = 0.005  # skip near-silent windows (already inaudible)
+
     # --- Embedding windows ----------------------------------------------
     # "ecapa" (SpeechBrain deep embeddings, best), "mfcc" (librosa fallback),
     # or "auto" (ecapa if available, else mfcc).

@@ -285,9 +285,14 @@ class DiarizationApp:
     def _build_config(self) -> DiarizationConfig:
         spk = self.speakers_var.get()
         num = None if spk == "auto" else int(spk)
-        ov_map = {"off": (False, 0.15), "light": (True, 0.08), "medium": (True, 0.15),
-                  "strong": (True, 0.25), "extreme": (True, 0.35)}
-        remove_overlap, overlap_margin = ov_map.get(self.overlap_var.get(), (True, 0.15))
+        # (remove_overlap, overlap_margin, crosstalk_gate, crosstalk_margin)
+        ov_map = {"off":     (False, 0.15, False, 0.07),
+                  "light":   (True,  0.08, True,  0.10),
+                  "medium":  (True,  0.15, True,  0.07),
+                  "strong":  (True,  0.25, True,  0.05),
+                  "extreme": (True,  0.35, True,  0.035)}
+        remove_overlap, overlap_margin, ct_gate, ct_margin = ov_map.get(
+            self.overlap_var.get(), (True, 0.15, True, 0.07))
         overlap_mode = "separate" if self.overlap_mode_var.get() == "un-mix" else "delete"
         return DiarizationConfig(
             num_speakers=num,
@@ -300,6 +305,8 @@ class DiarizationApp:
             export_compact=self.compact_var.get(),
             remove_overlap=remove_overlap,
             overlap_margin=overlap_margin,
+            crosstalk_gate=ct_gate,
+            crosstalk_margin=ct_margin,
             overlap_mode=overlap_mode,
             transcribe=self.transcribe_var.get(),
             whisper_model=self.whisper_var.get(),

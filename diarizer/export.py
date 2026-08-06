@@ -64,8 +64,9 @@ def _write_speaker_tracks(audio: LoadedAudio, result: DiarizationResult,
         log.info("Enhancing each speaker track (HP/EQ/compress/loudness)...")
 
     injections = getattr(result, "overlap_injections", None) or {}
+    kill = getattr(result, "crosstalk_kill", None) or {}
     for spk in sorted(result.speaker_time().keys()):
-        mask = _speaker_mask(result.segments, spk, n, sr, fade)
+        mask = _speaker_mask(result.segments, spk, n, sr, fade, kill.get(spk))
         track = _apply_mask(audio.samples, mask)
         _inject_overlap(track, injections.get(spk, []), sr)
         if cfg.enhance:
@@ -129,9 +130,12 @@ def _write_compact_tracks(audio: LoadedAudio, result: DiarizationResult,
 
 
 def _speaker_mask(segments: List[Segment], speaker: int, n: int, sr: int,
-                  fade: int) -> np.ndarray:
+                  fade: int, kill=None) -> np.ndarray:
     """A float mask in [0,1] that is 1 during ``speaker`` segments, with short
-    linear fades at the edges to avoid audible clicks."""
+    linear fades at the edges to avoid audible clicks. ``kill`` is an optional
+    list of ``(start_sec, end_sec)`` intervals inside this speaker's segments
+    that the cross-talk gate found to be a different voice - they are forced
+    back to 0 so foreign bleed is removed."""
     mask = np.zeros(n, dtype=np.float32)
     for s in segments:
         if s.speaker != speaker:
@@ -140,6 +144,12 @@ def _speaker_mask(segments: List[Segment], speaker: int, n: int, sr: int,
         i1 = min(n, int(round(s.end * sr)))
         if i1 > i0:
             mask[i0:i1] = 1.0
+
+    for t0, t1 in (kill or []):
+        i0 = max(0, int(round(t0 * sr)))
+        i1 = min(n, int(round(t1 * sr)))
+        if i1 > i0:
+            mask[i0:i1] = 0.0
 
     if fade > 1:
         # Smooth 0<->1 transitions with a short moving average (linear ramp).

@@ -57,6 +57,8 @@ class DiarizationResult:
     centroids: Optional[np.ndarray] = None
     # Filled in later (separation stage): speaker id -> [(start, end, audio)].
     overlap_injections: Optional[dict] = None
+    # Filled in later (cross-talk gate): speaker id -> [(start, end)] to silence.
+    crosstalk_kill: Optional[dict] = None
 
     def speaker_time(self) -> dict[int, float]:
         totals: dict[int, float] = {}
