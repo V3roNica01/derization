@@ -211,6 +211,14 @@ class DiarizationApp:
                      values=["tiny", "base", "small", "medium", "large-v3"]).grid(
                          row=5, column=5, columnspan=2, sticky="w", padx=(0, 6))
 
+        ttk.Label(opts, text="Engine:").grid(row=6, column=0, sticky="w", padx=6)
+        self.engine_var = tk.StringVar(value="builtin")
+        ttk.Combobox(opts, textvariable=self.engine_var, width=9, state="readonly",
+                     values=["builtin", "pyannote"]).grid(row=6, column=1, sticky="w")
+        ttk.Label(opts, text="(pyannote = state-of-the-art; needs setup + HF_TOKEN, "
+                             "else falls back to builtin)", style="Sub.TLabel").grid(
+            row=6, column=2, columnspan=6, sticky="w", padx=(8, 0), pady=(0, 6))
+
         # --- Action row ---
         actions = ttk.Frame(self.root)
         actions.pack(fill="x", **pad)
@@ -296,6 +304,7 @@ class DiarizationApp:
         overlap_mode = "separate" if self.overlap_mode_var.get() == "un-mix" else "delete"
         return DiarizationConfig(
             num_speakers=num,
+            diarization_backend=self.engine_var.get(),
             vad_backend=self.vad_var.get(),
             embedding_backend=self.emb_var.get(),
             device=self.device_var.get(),

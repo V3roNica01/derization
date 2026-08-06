@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
                    help="skip the noise-reduction / vocal-isolation stage")
     p.add_argument("--no-enhance", action="store_true",
                    help="skip per-speaker studio enhancement")
+    p.add_argument("--engine", choices=["builtin", "pyannote", "auto"], default="builtin",
+                   help="diarization engine: builtin (self-contained) or pyannote "
+                        "(state-of-the-art; needs pyannote.audio + HF token)")
+    p.add_argument("--hf-token", default=None,
+                   help="Hugging Face access token for pyannote (or set HF_TOKEN)")
     p.add_argument("--overlap", choices=["off", "light", "medium", "strong", "extreme"],
                    default="medium",
                    help="how aggressively to detect overlapping/cross-talk speech")
@@ -159,6 +164,8 @@ def main(argv=None) -> int:
         num_speakers=parse_speakers(args.speakers),
         min_speakers=args.min_speakers,
         max_speakers=args.max_speakers,
+        diarization_backend=args.engine,
+        hf_token=args.hf_token,
         remove_overlap=_ov[0],
         overlap_margin=_ov[1],
         crosstalk_gate=_ov[2],

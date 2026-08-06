@@ -35,6 +35,19 @@ class DiarizationConfig:
     min_speakers: int = 2
     max_speakers: int = 3
 
+    # --- Diarization engine ---------------------------------------------
+    # "builtin" -> the self-contained Silero VAD + ECAPA + clustering engine.
+    # "pyannote" -> pyannote.audio 3.1 (state-of-the-art, native overlap
+    #               detection). Requires `pip install pyannote.audio`, accepting
+    #               the model licences on Hugging Face, and an access token (set
+    #               HF_TOKEN, or ``hf_token`` below).
+    # "auto" -> pyannote if it's installed and a token is available, else builtin.
+    diarization_backend: str = "builtin"
+    pyannote_model: str = "pyannote/speaker-diarization-3.1"
+    # Hugging Face access token for the gated pyannote models. None -> read the
+    # HF_TOKEN / HUGGING_FACE_HUB_TOKEN environment variable instead.
+    hf_token: Optional[str] = None
+
     # --- Voice activity detection ---------------------------------------
     # "silero" (deep model, best), "energy" (pure-numpy fallback), or
     # "auto" (silero if available, else energy).

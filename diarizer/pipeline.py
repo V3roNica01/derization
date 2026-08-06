@@ -80,6 +80,16 @@ def diarize(audio: LoadedAudio, cfg: DiarizationConfig,
 
     duration = audio.mono16k.shape[0] / TARGET_SR
 
+    # 0. Optional state-of-the-art backend (pyannote.audio). Returns None when
+    #    unavailable/unselected, so we fall through to the built-in engine.
+    from .pyannote_backend import diarize_pyannote
+    from .hardware import resolve_device
+    pa = diarize_pyannote(audio, cfg, resolve_device(cfg.device, cfg.gpu_only),
+                          progress=progress)
+    if pa is not None:
+        _log_summary(pa)
+        return pa
+
     # 1. VAD -----------------------------------------------------------------
     report("Detecting speech regions...", 0.05)
     speech = detect_speech(audio.mono16k, cfg)
