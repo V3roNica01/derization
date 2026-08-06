@@ -106,13 +106,20 @@ class DiarizationConfig:
     # resolution against the voiceprints and SILENCES windows that clearly
     # belong to a different speaker ("delete if it's someone else").
     crosstalk_gate: bool = True
-    crosstalk_win: float = 0.8       # fine analysis window (seconds)
-    crosstalk_hop: float = 0.4       # step between fine windows
-    # Silence a window only when another speaker's voiceprint beats this
-    # speaker's by at least this cosine margin. LOWER = more aggressive.
-    # ~0.10 light, 0.07 medium, 0.05 strong, 0.035 extreme.
-    crosstalk_margin: float = 0.07
-    crosstalk_min_rms: float = 0.005  # skip near-silent windows (already inaudible)
+    crosstalk_win: float = 0.6       # fine analysis window (seconds)
+    crosstalk_hop: float = 0.3       # step between fine windows
+    # A window is KEPT only when its own speaker's voiceprint beats every other
+    # speaker's by at least this cosine margin; otherwise it is silenced. This
+    # catches short foreign responses ("yeah", "mm") that the old "other must
+    # clearly win" rule let through. HIGHER = more aggressive.
+    # ~0.0 light, 0.03 medium, 0.07 strong, 0.12 extreme.
+    crosstalk_keep_margin: float = 0.03
+    # A window is ALSO silenced when it matches its own speaker at less than this
+    # fraction of that speaker's typical (median) self-similarity - this catches
+    # laughter and non-speech noise that don't sound like any speaker. HIGHER =
+    # more aggressive. ~0.45 light, 0.55 medium, 0.62 strong, 0.70 extreme.
+    crosstalk_self_floor: float = 0.55
+    crosstalk_min_rms: float = 0.004  # skip near-silent windows (already inaudible)
 
     # --- Embedding windows ----------------------------------------------
     # "ecapa" (SpeechBrain deep embeddings, best), "mfcc" (librosa fallback),

@@ -38,8 +38,10 @@ def gate_crosstalk(mono16k: np.ndarray, result, cfg, device=None,
 
     win = float(cfg.crosstalk_win)
     hop = float(cfg.crosstalk_hop)
-    margin = float(cfg.crosstalk_margin)
+    keep_margin = float(cfg.crosstalk_keep_margin)
+    floor_ratio = float(cfg.crosstalk_self_floor)
     min_rms = float(cfg.crosstalk_min_rms)
+    embed_win = max(win, 0.9)                             # >= 0.9s keeps ECAPA stable
     dur_total = mono16k.shape[0] / TARGET_SR
     cents = cents.astype(np.float32)
 
@@ -49,14 +51,12 @@ def gate_crosstalk(mono16k: np.ndarray, result, cfg, device=None,
     for seg in result.segments:
         t = seg.start
         while t < seg.end - 1e-3:
-            c = min(seg.end, t + win * 0.5)              # window centre
-            a0 = max(0.0, c - win / 2)
-            a1 = min(dur_total, a0 + win)
-            a0 = max(0.0, a1 - win)
+            c = min(seg.end, t + hop * 0.5)              # kill-slice centre
+            a0 = max(0.0, c - embed_win / 2)             # embedder gets a wider,
+            a1 = min(dur_total, a0 + embed_win)          # centre-extended window
+            a0 = max(0.0, a1 - embed_win)
             a = _slice(mono16k, a0, a1)
             if a.size > 0 and float(np.sqrt(np.mean(a ** 2))) >= min_rms:
-                # Kill only the central hop-width slice: window edges that straddle
-                # a real->foreign transition are ambiguous and left to the speaker.
                 k0 = max(seg.start, c - hop / 2)
                 k1 = min(seg.end, c + hop / 2)
                 if k1 > k0:
@@ -72,20 +72,42 @@ def gate_crosstalk(mono16k: np.ndarray, result, cfg, device=None,
     embedder = SpeakerEmbedder(cfg)
     wins = embedder.embed_windows(audio_wins)
 
+    # Cosine similarity of every window to every speaker centroid.
+    emb = np.vstack([w.embedding for w in wins]).astype(np.float32)   # (N, D)
+    sims = emb @ cents.T                                              # (N, K)
+    spks = np.array([t[2] for t in tagged])
+    idx = np.arange(len(spks))
+    sim_self = sims[idx, spks]                                        # own speaker
+    other = sims.copy()
+    other[idx, spks] = -1e9
+    sim_other = other.max(axis=1)                                    # best other
+
+    # Per-speaker self-similarity floor: a fraction of that speaker's *median*
+    # window match (robust to the contaminating windows we're trying to remove).
+    floor = np.zeros(len(spks), dtype=np.float32)
+    for spk in np.unique(spks):
+        m = spks == spk
+        base = float(np.median(sim_self[m])) if m.any() else 0.0
+        floor[m] = floor_ratio * max(base, 0.0)
+
+    # Silence a window if its own speaker doesn't clearly win (foreign voice) OR
+    # it barely matches its own speaker at all (laughter / non-speech).
+    foreign = (sim_self - sim_other) < keep_margin
+    weak = sim_self < floor
+    drop = foreign | weak
+
     kill: Dict[int, List[Tuple[float, float]]] = {}
     gated = 0.0
-    for (k0, k1, spk), w in zip(tagged, wins):
-        e = w.embedding.astype(np.float32)
-        sims = cents @ e
-        best = int(np.argmax(sims))
-        if best != spk and float(sims[best] - sims[spk]) >= margin:
-            kill.setdefault(spk, []).append((k0, k1))
-            gated += (k1 - k0)
+    for i in np.nonzero(drop)[0]:
+        k0, k1, spk = tagged[i]
+        kill.setdefault(int(spk), []).append((k0, k1))
+        gated += (k1 - k0)
 
     merged = {spk: _merge(iv) for spk, iv in kill.items()}
     if gated > 0:
-        log.info("Cross-talk gate: silenced %.1fs of foreign voice across %d "
-                 "speaker track(s)", gated, len(merged))
+        log.info("Cross-talk gate: silenced %.1fs (%d foreign, %d weak-match) "
+                 "across %d speaker track(s)", gated, int(foreign.sum()),
+                 int((weak & ~foreign).sum()), len(merged))
     return merged
 
 

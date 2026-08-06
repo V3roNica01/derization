@@ -154,12 +154,12 @@ def main(argv=None) -> int:
         outdir = prompt_outdir(outdir)
     fmt = fmt or "wav"
 
-    # (remove_overlap, overlap_margin, crosstalk_gate, crosstalk_margin)
-    _ov = {"off":     (False, 0.15, False, 0.07),
-           "light":   (True,  0.08, True,  0.10),
-           "medium":  (True,  0.15, True,  0.07),
-           "strong":  (True,  0.25, True,  0.05),
-           "extreme": (True,  0.35, True,  0.035)}[args.overlap]
+    # (remove_overlap, overlap_margin, crosstalk_gate, keep_margin, self_floor)
+    _ov = {"off":     (False, 0.15, False, 0.03, 0.55),
+           "light":   (True,  0.08, True,  0.00, 0.45),
+           "medium":  (True,  0.15, True,  0.03, 0.55),
+           "strong":  (True,  0.25, True,  0.07, 0.62),
+           "extreme": (True,  0.35, True,  0.12, 0.70)}[args.overlap]
     cfg = DiarizationConfig(
         num_speakers=parse_speakers(args.speakers),
         min_speakers=args.min_speakers,
@@ -169,7 +169,8 @@ def main(argv=None) -> int:
         remove_overlap=_ov[0],
         overlap_margin=_ov[1],
         crosstalk_gate=_ov[2],
-        crosstalk_margin=_ov[3],
+        crosstalk_keep_margin=_ov[3],
+        crosstalk_self_floor=_ov[4],
         overlap_mode=args.overlap_mode,
         transcribe=args.transcribe,
         whisper_model=args.whisper_model,
