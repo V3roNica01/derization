@@ -3,18 +3,27 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE) ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?logo=python&logoColor=white) ![PyTorch](https://img.shields.io/badge/PyTorch-2.5%20cu121-EE4C2C.svg?logo=pytorch&logoColor=white) ![CUDA](https://img.shields.io/badge/GPU-CUDA%2012.1-76B900.svg?logo=nvidia&logoColor=white) ![Platform](https://img.shields.io/badge/Platform-Windows-0078D6.svg?logo=windows&logoColor=white) ![Status](https://img.shields.io/badge/status-active-success.svg)
 
 Separate the voices of **2–3 speakers** in an audio recording. Derization runs a
-full pipeline — **noise reduction → speaker diarization → per-speaker studio
-enhancement → export** — figuring out **who spoke when** and writing a
+full **GPU** pipeline — **vocal isolation → speaker diarization → true overlap
+separation → cross-talk gate → per-speaker studio enhancement → export
+(+ optional transcription)** — figuring out **who spoke when** and writing a
 **separate, cleaned-up audio track for each speaker** (in WAV/FLAC/OGG/MP3/AAC),
-plus a timeline you can read or feed into other tools.
+plus a timeline and an optional **speaker-labelled transcript with subtitles**.
 
 It works best on conversational audio where people mostly take turns (interviews,
 meetings, podcasts, phone calls). It is primarily *diarization-based* separation
-(each speaker's track holds their turns, silence elsewhere), with an optional
-**true overlap separation** stage (SepFormer) that un-mixes simultaneous speech
-into each speaker's track and deletes slices it can't confidently tell apart.
-Note: un-mixing real, noisy recordings is imperfect — where it isn't confident,
-those overlapping moments are removed rather than guessed.
+(each speaker's track holds their turns, silence elsewhere), hardened against
+bleed by two extra stages:
+
+- **True overlap separation** (SepFormer) un-mixes *simultaneous* speech into
+  each speaker's track and deletes slices it can't confidently tell apart.
+- **Cross-talk gate** re-checks each speaker's own segments against the
+  voiceprints and silences a brief *foreign* sound that leaked in — a laugh or
+  interjection that wasn't simultaneous speech, so the overlap stage never saw
+  it. The rule throughout: **when in doubt, delete rather than guess**, so
+  nothing bleeds between tracks.
+
+Un-mixing real, noisy recordings is imperfect — where it isn't confident, those
+moments are removed rather than guessed.
 
 ---
 
@@ -29,6 +38,9 @@ For an input like `interview.mp3`, the output folder contains:
 | `diarization.txt` | Human-readable "who spoke when" timeline + speaking-time totals. |
 | `diarization.csv` | `start, end, duration, speaker` for spreadsheets/scripts. |
 | `diarization.rttm` | Standard NIST RTTM (compatible with diarization scoring tools). |
+| `transcript.txt` *(with `--transcribe`)* | Speaker-labelled transcript grouped into turns (`[00:00:03] SPEAKER_1: …`). |
+| `transcript.srt`, `transcript.vtt` *(with `--transcribe`)* | Subtitles carrying the speaker label on each cue. |
+| `SPEAKER_k.txt` *(with `--transcribe`)* | Each speaker's words as plain text. |
 
 ---
 
@@ -69,11 +81,11 @@ pip install speechbrain silero-vad
 The tool **automatically uses your NVIDIA GPU** when a CUDA build of PyTorch is
 installed — the ECAPA voiceprints are batched onto the GPU, which is the main
 speedup. Control it with `--device auto|cuda|cpu` (CLI) or the **Device**
-dropdown (GUI); the GUI's status line shows the detected GPU. On a 6 GB card the
-default batch size of 32 is comfortable; raise `--batch-size` for more speed or
-lower it if you ever hit out-of-memory (the tool also auto-recovers from OOM by
-shrinking the batch). The CUDA wheels bundle their own runtime, so you only need
-a recent NVIDIA driver.
+dropdown (GUI); the GUI's status line shows the detected GPU. By default the
+batch size is **auto** — the tool reads the GPU's free VRAM and sizes the batch
+to fill it (leaving headroom) so work stays on the GPU rather than spilling to
+the CPU; pass `--batch-size N` to force a size. The CUDA wheels bundle their own
+runtime, so you only need a recent NVIDIA driver.
 
 ---
 
@@ -117,17 +129,56 @@ If you omit `--format`, the CLI **prompts** you for the export format and
 confirms the destination directory (spec-driven). Pass `-y` to skip prompts.
 
 Key options: `--speakers auto|2|3`, `--outdir`, `--format wav|flac|ogg|mp3|aac`,
-`--overlap off|light|medium|strong` (how hard to delete cross-talk from both
-speakers), `--bitrate 192k`, `--no-denoise`, `--no-enhance`, `--denoise-backend`,
+`--overlap off|light|medium|strong|extreme` (how aggressively to cut cross-talk /
+overlap), `--overlap-mode separate|delete`, `--transcribe`,
+`--whisper-model tiny|base|small|medium|large-v3`, `--engine builtin|pyannote`,
+`--hf-token`, `--bitrate 192k`, `--no-denoise`, `--no-enhance`,
+`--denoise-backend rvc_hp5|auto|noisereduce|spectral|none`,
 `--vad auto|silero|energy`, `--embeddings auto|ecapa|mfcc`,
-`--device auto|cuda|cpu`, `--batch-size N`, `--compact`, `--no-tracks`, `-y`,
-`-v/--verbose`, `-q/--quiet`. Run `python cli.py --help` for the full list.
+`--device auto|cuda|cpu`, `--allow-cpu`, `--batch-size N`, `--compact`,
+`--no-tracks`, `-y`, `-v/--verbose`, `-q/--quiet`. Run `python cli.py --help`
+for the full list.
 
-Example forcing the GPU and MP3 output, no prompts:
+Example forcing the GPU and MP3 output, with a speaker-labelled transcript:
 
 ```bash
-python cli.py meeting.wav --speakers 2 --device cuda --format mp3 -y -v
+python cli.py meeting.wav --speakers 2 --device cuda --format mp3 --transcribe -y -v
 ```
+
+---
+
+## Extras
+
+### Transcription (`--transcribe`)
+
+Adds speech-to-text with **speaker attribution**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+(CTranslate2) transcribes the cleaned audio on the GPU with word-level
+timestamps, and each word is attributed to a speaker via the diarization
+timeline. You get `transcript.txt` (turns), per-speaker `.txt`, and `.srt`/`.vtt`
+subtitles. Pick the model with `--whisper-model` (`small` is a good balance on a
+6 GB card; `large-v3` is most accurate). The model downloads once into
+`models/whisper` and then loads offline.
+
+### State-of-the-art diarization engine (`--engine pyannote`)
+
+Optional [pyannote.audio](https://github.com/pyannote/pyannote-audio) 3.1
+backend — more accurate speaker turns and native overlap detection. It is
+**opt-in** and falls back to the built-in engine if anything is missing, so the
+app always runs. To enable it:
+
+1. `pip install pyannote.audio`
+2. Accept the licences (free) for
+   [`pyannote/speaker-diarization-3.1`](https://hf.co/pyannote/speaker-diarization-3.1)
+   and [`pyannote/segmentation-3.0`](https://hf.co/pyannote/segmentation-3.0).
+3. Create a Hugging Face access token and set it: `set HF_TOKEN=hf_…`
+   (or pass `--hf-token`).
+4. Run with `--engine pyannote` (CLI) or pick **pyannote** in the GUI's
+   **Engine** dropdown.
+
+pyannote only produces the timeline; speaker voiceprints for the overlap and
+cross-talk stages are still computed with the same ECAPA embedder, so the rest
+of the pipeline (separation, cross-talk gate, enhancement, transcription) is
+identical.
 
 ## Use it — from Python
 
@@ -166,30 +217,38 @@ python cli.py sample.wav --speakers 2 --vad energy --embeddings mfcc -v
 ## How it works
 
 ```
-audio ─▶ [denoise] clean vocals ─▶ [VAD] speech regions
-      ─▶ [window + embed] voiceprints ─▶ [cluster] speaker per window
-      ─▶ [smooth/merge] segments ─▶ [enhance] per speaker
-      ─▶ per-speaker tracks (chosen format) + timeline files
+audio ─▶ [isolate vocals] RVC/UVR HP5 ─▶ [diarize] who spoke when
+      ─▶ [separate] un-mix overlaps ─▶ [cross-talk gate] kill foreign bleed
+      ─▶ [enhance] per speaker ─▶ per-speaker tracks + timeline
+      ─▶ [transcribe] speaker-labelled transcript + subtitles (optional)
 ```
 
-0. **Noise reduction** removes ambient/background noise so only voices remain
-   (noisereduce spectral gating — GPU-accelerated — or a numpy spectral gate).
-1. **Voice activity detection** trims silence (Silero neural VAD, or an adaptive
-   energy gate).
-2. **Embedding** turns overlapping ~1.5 s windows into speaker "voiceprints"
-   (SpeechBrain ECAPA-TDNN on the GPU, or MFCC statistics). Very short windows
-   are centre-extended so they don't become clustering outliers.
-3. **Clustering** groups windows by speaker (agglomerative, complete linkage,
-   cosine distance). With `auto`, it picks 2 vs 3 by silhouette score.
-4. **Post-processing** rasterises, smooths short flickers, and merges runs into
-   clean segments.
-5. **Enhancement** (per speaker): high-pass, presence EQ, gentle compression,
+0. **Vocal isolation** removes music/background so only voices remain
+   (RVC/UVR **HP5** model via `audio-separator`, running on the GPU; other
+   backends available via `--denoise-backend`).
+1. **Diarization** — either the built-in engine or pyannote (`--engine`):
+   Silero neural VAD trims silence; overlapping ~1.5 s windows become speaker
+   "voiceprints" (SpeechBrain **ECAPA-TDNN** on the GPU, batched to fit VRAM);
+   agglomerative complete-linkage cosine clustering groups them (auto 2-vs-3 by
+   silhouette); the timeline is rasterised, smoothed and merged into segments.
+2. **Overlap separation** un-mixes *simultaneous* speech with **SepFormer**,
+   routes each source to its speaker by ECAPA centroid, and deletes slices it
+   can't confidently split.
+3. **Cross-talk gate** re-checks each speaker's segments at fine resolution and
+   silences windows that clearly belong to a different speaker (leaked laughs /
+   interjections the overlap stage never saw).
+4. **Enhancement** (per speaker): high-pass, presence EQ, gentle compression,
    and loudness normalization (−16 LUFS) so every speaker sits at a consistent,
    clear level.
-6. **Export** writes each speaker's track in your chosen format (the CLI prompts
+5. **Export** writes each speaker's track in your chosen format (the CLI prompts
    for format + destination; the GUI has dropdowns).
+6. **Transcription** (optional) transcribes on the GPU with Whisper and
+   attributes each word to a speaker.
 
-Tunable parameters live in `diarizer/config.py`.
+Everything runs **GPU-only by default** (no silent CPU fallback); pass
+`--allow-cpu` to relax that. Models download once into the project's `models/`
+folder, so the app stays self-contained. Tunable parameters live in
+`diarizer/config.py`.
 
 ---
 
@@ -206,17 +265,30 @@ derization/
 └─ diarizer/              # the engine (shared by CLI + GUI)
    ├─ config.py           # all tunable parameters
    ├─ audioio.py          # load / resample / save audio
+   ├─ formats.py          # encode to wav/flac/ogg/mp3/aac
    ├─ vad.py              # voice activity detection (silero + energy)
    ├─ embeddings.py       # speaker voiceprints (ecapa + mfcc), GPU-batched
-   ├─ hardware.py         # GPU/CPU device selection + reporting
+   ├─ hardware.py         # GPU/CPU device selection + VRAM-aware batching
    ├─ cluster.py          # clustering + auto speaker-count
-   ├─ pipeline.py         # orchestration -> segments
+   ├─ pipeline.py         # built-in orchestration -> segments
+   ├─ pyannote_backend.py # optional SOTA diarization engine (pyannote.audio)
+   ├─ rvc_denoise.py      # RVC/UVR HP5 vocal isolation on the GPU
+   ├─ separate.py         # SepFormer overlap un-mixing
+   ├─ crosstalk.py        # residual cross-talk gate (kill leaked foreign voice)
+   ├─ enhance.py          # per-speaker studio enhancement
+   ├─ transcribe.py       # Whisper transcription + speaker attribution
    ├─ export.py           # per-speaker audio + timeline files
    └─ logutil.py          # shared verbose logging
 ```
 
 ## Limitations
 
-- Turn-taking assumption: fully overlapping speech isn't un-mixed.
+- Overlap un-mixing on real, similar-sounding voices is hard: where SepFormer
+  can't confidently split simultaneous speech, those moments are **deleted**
+  (silent in both tracks) rather than guessed — clean, but not recovered.
 - Accuracy depends on audio quality; noisy/cross-talk-heavy audio is harder.
+  The built-in engine is strong on turn-taking conversation; for the toughest
+  audio, enable the pyannote engine (`--engine pyannote`).
 - Auto speaker-count is a best guess — pass `--speakers 2`/`3` if you know it.
+- GPU-only by default: a CUDA GPU is expected. Pass `--allow-cpu` to run the
+  neural stages on the CPU (much slower).
