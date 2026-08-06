@@ -220,7 +220,18 @@ def _print_summary(result, files, outdir, elapsed) -> None:
         print(f"  {result.label(spk):<12} {secs:6.1f}s  ({pct:4.1f}%)")
     print(f"\n  Output folder: {Path(outdir).resolve()}")
     for f in files:
-        print(f"    - {Path(f).name}")
+        p = Path(f)
+        try:
+            b = p.stat().st_size
+            if b >= 1024 * 1024:
+                size = f"{b/1024/1024:.1f} MB"
+            elif b >= 1024:
+                size = f"{b/1024:.0f} KB"
+            else:
+                size = f"{b} B"
+        except OSError:
+            size = "?"
+        print(f"    - {p.name:<22} {size:>9}")
     print()
 
 

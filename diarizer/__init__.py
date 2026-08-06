@@ -96,10 +96,16 @@ def process_file(input_path: str | Path,
             def sep_prog(msg: str, frac: float) -> None:
                 report(msg, 0.88 + 0.11 * max(0.0, min(1.0, frac)))
 
-            device = resolve_device(cfg.device, cfg.gpu_only)
-            injections, _, _ = separate_overlaps(audio, result, cfg, device,
-                                                 progress=sep_prog)
-            result.overlap_injections = injections
+            try:
+                device = resolve_device(cfg.device, cfg.gpu_only)
+                injections, _, _ = separate_overlaps(audio, result, cfg, device,
+                                                     progress=sep_prog)
+                result.overlap_injections = injections
+            except Exception as exc:
+                # An optional stage must never lose the diarization; on failure
+                # overlaps simply stay deleted (silent in both tracks).
+                log.warning("Overlap separation failed (%s); overlaps will be "
+                            "deleted instead.", exc)
         else:
             report("SepFormer unavailable - overlaps will be deleted.", 0.9)
 
