@@ -47,7 +47,8 @@ def process_file(input_path: str | Path,
     """
     import numpy as np
     from .audioio import resample
-    from .crosstalk import gate_crosstalk
+    from .crosstalk import gate_crosstalk, deterministic_kills
+    from .crosstalk import _merge as _merge_intervals
     from .enhance import denoise
     from .export import export_all
     from .hardware import log_device_info, resolve_device
@@ -110,13 +111,17 @@ def process_file(input_path: str | Path,
             report("SepFormer unavailable - overlaps will be deleted.", 0.9)
 
     # Residual cross-talk gate: silence foreign voice (laughs/interjections)
-    # that leaked inside a speaker's own segment but was never overlap.
+    # that leaked inside a speaker's own segment but was never overlap, plus
+    # deterministic time-based kills (overlap dilation + turn-boundary guards).
     if getattr(cfg, "crosstalk_gate", False) and result.num_speakers > 1:
         try:
             device = resolve_device(cfg.device, cfg.gpu_only)
             report("Removing residual cross-talk...", 0.985)
-            result.crosstalk_kill = gate_crosstalk(audio.mono16k, result, cfg,
-                                                    device, progress=None)
+            kill = gate_crosstalk(audio.mono16k, result, cfg, device, progress=None)
+            det = deterministic_kills(result, cfg)
+            for spk, ivs in det.items():
+                kill[spk] = _merge_intervals(kill.get(spk, []) + ivs)
+            result.crosstalk_kill = kill
         except Exception as exc:
             log.warning("Cross-talk gate failed (%s); skipping", exc)
 

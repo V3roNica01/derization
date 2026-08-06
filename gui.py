@@ -181,7 +181,7 @@ class DiarizationApp:
         ttk.Label(opts, text="Overlap cut:").grid(row=2, column=6, sticky="w", padx=(16, 6))
         self.overlap_var = tk.StringVar(value="medium")
         ttk.Combobox(opts, textvariable=self.overlap_var, width=8, state="readonly",
-                     values=["off", "light", "medium", "strong", "extreme"]).grid(
+                     values=["off", "light", "medium", "strong", "extreme", "max"]).grid(
                          row=2, column=7, sticky="w")
 
         ttk.Label(opts, text="Overlap:").grid(row=3, column=0, sticky="w", padx=6)
@@ -298,9 +298,11 @@ class DiarizationApp:
                   "light":   (True,  0.08, True,  0.00, 0.45),
                   "medium":  (True,  0.15, True,  0.03, 0.55),
                   "strong":  (True,  0.25, True,  0.07, 0.62),
-                  "extreme": (True,  0.35, True,  0.12, 0.70)}
+                  "extreme": (True,  0.35, True,  0.12, 0.70),
+                  "max":     (True,  0.45, True,  0.16, 0.78)}
         remove_overlap, overlap_margin, ct_gate, ct_keep, ct_floor = ov_map.get(
             self.overlap_var.get(), (True, 0.15, True, 0.03, 0.55))
+        _max = self.overlap_var.get() == "max"
         overlap_mode = "separate" if self.overlap_mode_var.get() == "un-mix" else "delete"
         return DiarizationConfig(
             num_speakers=num,
@@ -317,6 +319,10 @@ class DiarizationApp:
             crosstalk_gate=ct_gate,
             crosstalk_keep_margin=ct_keep,
             crosstalk_self_floor=ct_floor,
+            overlap_dilate_sec=(0.30 if _max else 0.0),
+            boundary_guard_sec=(0.25 if _max else 0.0),
+            crosstalk_second_speaker=_max,
+            crosstalk_second_factor=(1.5 if _max else 2.5),
             overlap_mode=overlap_mode,
             transcribe=self.transcribe_var.get(),
             whisper_model=self.whisper_var.get(),

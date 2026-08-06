@@ -96,6 +96,26 @@ def gate_crosstalk(mono16k: np.ndarray, result, cfg, device=None,
     weak = sim_self < floor
     drop = foreign | weak
 
+    # Optional second-speaker pass (max-aggression): a simultaneous backchannel
+    # leaves a small "residual" lean toward the other speaker even when the loud
+    # owner dominates the window. Remove the owner's linear component, then flag
+    # windows whose residual toward the best-other centroid is a robust outlier
+    # vs that speaker's own baseline.
+    second = np.zeros(len(spks), dtype=bool)
+    if getattr(cfg, "crosstalk_second_speaker", False):
+        cc = cents @ cents.T                                          # (K, K)
+        other_idx = other.argmax(axis=1)
+        cos_so = cc[spks, other_idx]
+        res_other = sim_other - sim_self * cos_so                     # residual lean
+        factor = float(cfg.crosstalk_second_factor)
+        for spk in np.unique(spks):
+            m = spks == spk
+            v = res_other[m]
+            med = float(np.median(v))
+            mad = float(np.median(np.abs(v - med))) + 1e-6
+            second[m] = v > (med + factor * 1.4826 * mad)
+        drop = drop | second
+
     kill: Dict[int, List[Tuple[float, float]]] = {}
     gated = 0.0
     for i in np.nonzero(drop)[0]:
@@ -105,10 +125,43 @@ def gate_crosstalk(mono16k: np.ndarray, result, cfg, device=None,
 
     merged = {spk: _merge(iv) for spk, iv in kill.items()}
     if gated > 0:
-        log.info("Cross-talk gate: silenced %.1fs (%d foreign, %d weak-match) "
-                 "across %d speaker track(s)", gated, int(foreign.sum()),
-                 int((weak & ~foreign).sum()), len(merged))
+        log.info("Cross-talk gate: silenced %.1fs (%d foreign, %d weak-match, "
+                 "%d second-speaker) across %d speaker track(s)", gated,
+                 int(foreign.sum()), int((weak & ~foreign).sum()),
+                 int((second & ~foreign & ~weak).sum()), len(merged))
     return merged
+
+
+def deterministic_kills(result, cfg) -> Dict[int, List[Tuple[float, float]]]:
+    """Time-based anti-bleed that doesn't rely on hearing the quiet voice:
+    dilate detected overlaps into neighbouring segments, and guard the edges of
+    every segment that borders a DIFFERENT speaker (the turn-change collision
+    zone). Returns per-speaker intervals to silence."""
+    dilate = float(getattr(cfg, "overlap_dilate_sec", 0.0) or 0.0)
+    guard = float(getattr(cfg, "boundary_guard_sec", 0.0) or 0.0)
+    kill: Dict[int, List[Tuple[float, float]]] = {}
+    if dilate <= 0.0 and guard <= 0.0:
+        return kill
+    speakers = sorted({s.speaker for s in result.segments})
+
+    # Overlap dilation: widen each deleted overlap span into every track.
+    if dilate > 0.0:
+        for s, e in getattr(result, "overlap_spans", None) or []:
+            for spk in speakers:
+                kill.setdefault(spk, []).append((s - dilate, e + dilate))
+
+    # Boundary guards: silence the start/end of a segment when the adjacent
+    # speech belongs to another speaker.
+    if guard > 0.0:
+        segs = sorted(result.segments, key=lambda s: s.start)
+        for i, seg in enumerate(segs):
+            prev = segs[i - 1] if i > 0 else None
+            nxt = segs[i + 1] if i + 1 < len(segs) else None
+            if prev is not None and prev.speaker != seg.speaker:
+                kill.setdefault(seg.speaker, []).append((seg.start, seg.start + guard))
+            if nxt is not None and nxt.speaker != seg.speaker:
+                kill.setdefault(seg.speaker, []).append((seg.end - guard, seg.end))
+    return {spk: _merge(iv) for spk, iv in kill.items()}
 
 
 def _slice(mono16k: np.ndarray, start: float, end: float) -> np.ndarray:

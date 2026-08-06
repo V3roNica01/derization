@@ -54,9 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "(state-of-the-art; needs pyannote.audio + HF token)")
     p.add_argument("--hf-token", default=None,
                    help="Hugging Face access token for pyannote (or set HF_TOKEN)")
-    p.add_argument("--overlap", choices=["off", "light", "medium", "strong", "extreme"],
+    p.add_argument("--overlap",
+                   choices=["off", "light", "medium", "strong", "extreme", "max"],
                    default="medium",
-                   help="how aggressively to detect overlapping/cross-talk speech")
+                   help="how aggressively to cut overlapping/cross-talk speech "
+                        "('max' adds deterministic overlap-dilation + turn-boundary "
+                        "deletion to fight simultaneous backchannels; choppier)")
     p.add_argument("--overlap-mode", choices=["separate", "delete"], default="separate",
                    help="separate = un-mix simultaneous voices into each track; "
                         "delete = silence overlap in both")
@@ -161,7 +164,9 @@ def main(argv=None) -> int:
            "light":   (True,  0.08, True,  0.00, 0.45),
            "medium":  (True,  0.15, True,  0.03, 0.55),
            "strong":  (True,  0.25, True,  0.07, 0.62),
-           "extreme": (True,  0.35, True,  0.12, 0.70)}[args.overlap]
+           "extreme": (True,  0.35, True,  0.12, 0.70),
+           "max":     (True,  0.45, True,  0.16, 0.78)}[args.overlap]
+    _max = args.overlap == "max"
     cfg = DiarizationConfig(
         num_speakers=parse_speakers(args.speakers),
         min_speakers=args.min_speakers,
@@ -173,6 +178,10 @@ def main(argv=None) -> int:
         crosstalk_gate=_ov[2],
         crosstalk_keep_margin=_ov[3],
         crosstalk_self_floor=_ov[4],
+        overlap_dilate_sec=(0.30 if _max else 0.0),
+        boundary_guard_sec=(0.25 if _max else 0.0),
+        crosstalk_second_speaker=_max,
+        crosstalk_second_factor=(1.5 if _max else 2.5),
         overlap_mode=args.overlap_mode,
         transcribe=args.transcribe,
         whisper_model=args.whisper_model,

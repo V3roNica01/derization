@@ -121,6 +121,23 @@ class DiarizationConfig:
     crosstalk_self_floor: float = 0.55
     crosstalk_min_rms: float = 0.004  # skip near-silent windows (already inaudible)
 
+    # --- Max-aggression anti-bleed (deterministic; for the "max" level) ---
+    # These delete regions LIKELY to hold cross-talk without needing to detect
+    # the quiet second voice (which the embedding can't do reliably). They trade
+    # some real audio at edges for less bleed - tracks get choppier.
+    # Expand each detected overlap span by this many seconds on both sides
+    # before it's deleted, so a backchannel's run-up/tail goes too.
+    overlap_dilate_sec: float = 0.0
+    # Silence this many seconds at a segment edge that borders a DIFFERENT
+    # speaker - the turn-change collision zone where cross-talk collects.
+    boundary_guard_sec: float = 0.0
+    # Also silence windows whose residual similarity to another speaker (after
+    # removing the owner's component) is a statistical outlier vs the owner's own
+    # baseline - catches louder simultaneous backchannels. LOWER factor = more
+    # aggressive (fewer std-devs above the median needed to cut).
+    crosstalk_second_speaker: bool = False
+    crosstalk_second_factor: float = 2.5
+
     # --- Embedding windows ----------------------------------------------
     # "ecapa" (SpeechBrain deep embeddings, best), "mfcc" (librosa fallback),
     # or "auto" (ecapa if available, else mfcc).
